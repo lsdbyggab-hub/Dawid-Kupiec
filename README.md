@@ -1,8 +1,18 @@
 # Wall PDF Analyzer
 
-Prototyp aplikacji do zestawiania długości ścian z danych rozpoznanych z rysunku PDF.
+Aplikacja desktopowa do zestawiania długości ścian z danych rozpoznanych z rysunku PDF.
 
-Aktualna wersja przyjmuje plik JSON z geometrią ścian, typami ścian, skalą, otworami i zakresem analizy. Następnie liczy długości brutto, szerokości otworów, długości netto, sumuje ściany po typach, osobno raportuje ściany zewnętrzne i generuje raporty do Excela, CSV, JSON oraz kontrolny overlay SVG.
+Program przyjmuje plik JSON z geometrią ścian, typami ścian, skalą, otworami i zakresem analizy. Następnie liczy długości brutto, szerokości otworów, długości netto, sumuje ściany po typach, osobno raportuje ściany zewnętrzne i generuje raporty do Excela, CSV, JSON oraz kontrolny overlay SVG.
+
+## Najprostsze uruchomienie
+
+Kliknij dwukrotnie:
+
+```text
+Uruchom Wall PDF Analyzer.bat
+```
+
+Po starcie aplikacja automatycznie wczytuje przykładowy projekt. Możesz od razu sprawdzić podgląd, tabele i wyeksportować komplet wyników przyciskiem `Eksportuj wszystko`.
 
 ## Co działa
 
@@ -14,23 +24,39 @@ Aktualna wersja przyjmuje plik JSON z geometrią ścian, typami ścian, skalą, 
 - Eksport do `.xlsx`, `.csv`, `.json`.
 - Eksport overlay `.svg` z kolorowym oznaczeniem odcinków.
 - Ostrzeżenia dla odcinków o niskiej pewności rozpoznania.
-- Proste okno GUI do wczytania JSON i eksportu wyników.
+- Okno aplikacji z podglądem kolorowych ścian, tabelą podsumowania, tabelą odcinków i panelem kontroli.
+- Jeden przycisk do eksportu kompletu wyników: Excel, CSV, JSON i SVG.
 - Testy jednostkowe oparte na standardowym `unittest`.
 
-## Uruchomienie przykładu
+## Uruchomienie z terminala
 
 Z katalogu repozytorium:
 
 ```powershell
+python run_app.py
 python -m wall_pdf_analyzer.cli examples\sample_project.json out\raport.xlsx --overlay out\kontrola.svg
 python -m wall_pdf_analyzer.cli examples\sample_project.json out\raport.json
-python -m wall_pdf_analyzer.gui
 ```
 
 Jeżeli używasz Pythona z pakietu Codex na tej maszynie:
 
 ```powershell
 & 'C:\Users\dawid\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe' -m wall_pdf_analyzer.cli examples\sample_project.json out\raport.xlsx --overlay out\kontrola.svg
+```
+
+## Budowanie pliku EXE
+
+Opcjonalnie można zbudować wersję `.exe` dla Windows:
+
+```powershell
+python -m pip install pyinstaller
+python build_windows_app.py
+```
+
+Gotowy plik pojawi się w:
+
+```text
+dist\Wall PDF Analyzer\Wall PDF Analyzer.exe
 ```
 
 ## Testy
@@ -52,9 +78,9 @@ Najważniejsze pola:
 - `openings[].width` jest szerokością otworu w jednostkach rysunku.
 - `exterior: true` na typie lub odcinku oznacza ścianę zewnętrzną.
 
-## Zakres prototypu
+## Zakres aplikacji
 
-Ten prototyp nie rozpoznaje jeszcze automatycznie geometrii z surowego PDF. Jest przygotowany jako drugi etap procesu: przyjmuje dane, które mogą pochodzić z ekstraktora PDF, ręcznego oznaczenia albo przyszłego modelu rozpoznawania.
+Ta wersja nie rozpoznaje jeszcze automatycznie geometrii z surowego PDF. Jest przygotowana jako drugi etap procesu: przyjmuje dane, które mogą pochodzić z ekstraktora PDF, ręcznego oznaczenia albo przyszłego modelu rozpoznawania.
 
 Najbliższe kroki rozwoju:
 
