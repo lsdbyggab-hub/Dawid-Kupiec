@@ -8,13 +8,27 @@ from xml.sax.saxutils import escape
 
 from .processor import analyze_project
 
+DETAIL_COLUMNS = [
+    "id",
+    "type",
+    "label",
+    "color",
+    "highlight",
+    "page",
+    "gross_length_m",
+    "openings_width_m",
+    "optional_net_length_m",
+    "confidence",
+    "external",
+]
+
 
 def export_csv(payload: dict, path: str | Path) -> Path:
     report = analyze_project(payload)
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(report["rows"][0].keys()))
+        writer = csv.DictWriter(handle, fieldnames=DETAIL_COLUMNS)
         writer.writeheader()
         writer.writerows(report["rows"])
     return output
@@ -29,7 +43,7 @@ def export_xlsx(payload: dict, path: str | Path) -> Path:
     summary_rows = [["Typ ściany", "Długość brutto [m]"]] + [
         [key, value] for key, value in report["totals_by_type"].items()
     ] + [["Ściana zewnętrzna", report["external_total_m"]]]
-    detail_rows = [list(report["rows"][0].keys())] + [list(row.values()) for row in report["rows"]]
+    detail_rows = [DETAIL_COLUMNS] + [[row.get(column, "") for column in DETAIL_COLUMNS] for row in report["rows"]]
 
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as xlsx:
         xlsx.writestr("[Content_Types].xml", _content_types())
@@ -53,10 +67,18 @@ def _sheet(rows: list[list[object]]) -> str:
     for row_index, row in enumerate(rows, start=1):
         cells = []
         for column_index, value in enumerate(row, start=1):
-            cell_ref = f"{chr(64 + column_index)}{row_index}"
+            cell_ref = f"{_excel_column(column_index)}{row_index}"
             cells.append(f'<c r="{cell_ref}" t="inlineStr"><is><t>{escape(str(value))}</t></is></c>')
         xml_rows.append(f'<row r="{row_index}">{"".join(cells)}</row>')
     return f'<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>{"".join(xml_rows)}</sheetData></worksheet>'
+
+
+def _excel_column(index: int) -> str:
+    letters = ""
+    while index:
+        index, remainder = divmod(index - 1, 26)
+        letters = chr(65 + remainder) + letters
+    return letters
 
 
 def _content_types() -> str:

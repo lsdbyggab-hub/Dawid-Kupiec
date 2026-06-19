@@ -5,7 +5,9 @@ from typing import Any
 
 from .model import AnalysisResult, Opening, WallSegment, WallTypeRule
 
-EXTERNAL_WALL_TYPE = "EXTERNAL"
+DEFAULT_WALL_COLOR = "#999999"
+EXTERNAL_WALL_COLOR = "#FF00FF"
+EXTERNAL_WALL_LABEL = "Ściana zewnętrzna"
 
 
 def load_analysis(payload: dict[str, Any]) -> AnalysisResult:
@@ -13,7 +15,7 @@ def load_analysis(payload: dict[str, Any]) -> AnalysisResult:
         WallTypeRule(
             code=item["code"],
             label=item.get("label", item["code"]),
-            color_hex=item.get("color_hex", "#999999"),
+            color_hex=item.get("color_hex", DEFAULT_WALL_COLOR),
             count_in_totals=item.get("count_in_totals", True),
             highlight=item.get("highlight", True),
         )
@@ -39,8 +41,9 @@ def analyze_project(payload: dict[str, Any]) -> dict[str, Any]:
 
     for wall in result.walls_for_totals():
         rule = result.rule_for(wall.wall_type)
-        color = "#FF00FF" if wall.is_external else (rule.color_hex if rule else "#999999")
-        label = "Ściana zewnętrzna" if wall.is_external else (rule.label if rule else wall.wall_type)
+        highlight = True if wall.is_external else (rule.highlight if rule else True)
+        color = _display_color(wall, rule)
+        label = EXTERNAL_WALL_LABEL if wall.is_external else (rule.label if rule else wall.wall_type)
         by_type[wall.wall_type] += wall.gross_length_m
         if wall.is_external:
             external_total += wall.gross_length_m
@@ -50,6 +53,7 @@ def analyze_project(payload: dict[str, Any]) -> dict[str, Any]:
                 "type": wall.wall_type,
                 "label": label,
                 "color": color,
+                "highlight": highlight,
                 "page": wall.page,
                 "gross_length_m": round(wall.gross_length_m, 3),
                 "openings_width_m": round(wall.openings_width_m, 3),
@@ -67,6 +71,14 @@ def analyze_project(payload: dict[str, Any]) -> dict[str, Any]:
         "external_total_m": round(external_total, 3),
         "rows": rows,
     }
+
+
+def _display_color(wall: WallSegment, rule: WallTypeRule | None) -> str:
+    if wall.is_external:
+        return EXTERNAL_WALL_COLOR
+    if rule is None:
+        return DEFAULT_WALL_COLOR
+    return rule.color_hex if rule.highlight else ""
 
 
 def _load_wall(item: dict[str, Any]) -> WallSegment:

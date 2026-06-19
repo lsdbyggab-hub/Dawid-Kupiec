@@ -1,3 +1,4 @@
+from wall_pdf_analyzer.export import export_csv, export_xlsx
 from wall_pdf_analyzer.processor import analyze_project
 
 
@@ -32,3 +33,27 @@ def test_external_walls_are_summarized_separately():
     assert report["external_total_m"] == 6.5
     assert report["rows"][0]["label"] == "Ściana zewnętrzna"
     assert report["rows"][0]["color"] == "#FF00FF"
+    assert report["rows"][0]["highlight"] is True
+
+
+def test_non_highlighted_wall_type_is_reported_without_overlay_color():
+    payload = {
+        "rules": [{"code": "NNLK", "label": "NNLK", "color_hex": "#CCCCCC", "highlight": False}],
+        "walls": [{"identifier": "W3", "wall_type": "NNLK", "length_m": 2.1}],
+    }
+
+    report = analyze_project(payload)
+
+    assert report["totals_by_type"] == {"NNLK": 2.1}
+    assert report["rows"][0]["highlight"] is False
+    assert report["rows"][0]["color"] == ""
+
+
+def test_exporters_handle_empty_wall_list(tmp_path):
+    payload = {"rules": [], "walls": []}
+
+    csv_path = export_csv(payload, tmp_path / "empty.csv")
+    xlsx_path = export_xlsx(payload, tmp_path / "empty.xlsx")
+
+    assert csv_path.read_text(encoding="utf-8").startswith("id,type,label,color,highlight")
+    assert xlsx_path.exists()
