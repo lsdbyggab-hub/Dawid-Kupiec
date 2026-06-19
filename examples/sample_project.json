@@ -1,0 +1,17 @@
+{
+  "source_pdf": "rzut-parter.pdf",
+  "scale": "1:50",
+  "analyzed_scope": "strona 1, obrys A1-D8",
+  "rules": [
+    {"code": "S1", "label": "Ściana działowa S1", "color_hex": "#4CAF50"},
+    {"code": "S2", "label": "Ściana konstrukcyjna S2", "color_hex": "#2196F3"},
+    {"code": "NNLK", "label": "NNLK - raport bez koloru", "color_hex": "#CCCCCC", "highlight": false}
+  ],
+  "walls": [
+    {"identifier": "W-001", "wall_type": "S1", "length_m": 5.2, "page": 1, "confidence": 0.96,
+      "openings": [{"identifier": "O-001", "kind": "okno", "width_m": 1.2, "position_m": 2.4}]},
+    {"identifier": "W-002", "wall_type": "S2", "length_m": 7.4, "page": 1, "is_external": true, "confidence": 0.92,
+      "openings": [{"identifier": "D-001", "kind": "drzwi", "width_m": 0.9}]},
+    {"identifier": "W-003", "wall_type": "NNLK", "length_m": 2.1, "page": 1, "confidence": 0.88}
+  ]
+}
