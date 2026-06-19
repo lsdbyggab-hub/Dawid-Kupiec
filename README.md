@@ -1,67 +1,66 @@
-# Dawid-Kupiec
+# Wall PDF Analyzer
 
-## Koncepcja aplikacji do analizy ścian z PDF
+Prototyp aplikacji do zestawiania długości ścian z danych rozpoznanych z rysunku PDF.
 
-Aplikacja ma odczytywać rysunki techniczne z plików PDF, rozpoznawać skalę, identyfikować typy ścian oraz przygotowywać zestawienie długości do pobrania w formacie Excel. Okna i inne otwory nie powinny kończyć odcinka ściany, dlatego ich szerokość należy doliczać do całkowitej długości ściany. Ściana zewnętrzna budynku powinna być obliczana osobno i oznaczana innym kolorem, a każdy typ ściany powinien mieć własne oznaczenie kolorystyczne na pliku kontrolnym.
+Aktualna wersja przyjmuje plik JSON z geometrią ścian, typami ścian, skalą, otworami i zakresem analizy. Następnie liczy długości brutto, szerokości otworów, długości netto, sumuje ściany po typach, osobno raportuje ściany zewnętrzne i generuje raporty do Excela, CSV, JSON oraz kontrolny overlay SVG.
 
-## Propozycje udoskonaleń modelu i aplikacji
+## Co działa
 
-### 1. Precyzyjny odczyt skali i kalibracja
+- Model danych dla skali, zakresu analizy, typów ścian, odcinków i otworów.
+- Liczenie długości ścian w metrach na podstawie skali.
+- Otwory nie kończą ściany: długość brutto pozostaje pełną długością odcinka, a szerokości drzwi i okien są raportowane osobno.
+- Ściany zewnętrzne są sumowane osobno i oznaczane kolorem kontrolnym `#FF00FF`.
+- Raport Excel zawiera arkusze `Podsumowanie`, `Odcinki` i `Kontrola`.
+- Eksport do `.xlsx`, `.csv`, `.json`.
+- Eksport overlay `.svg` z kolorowym oznaczeniem odcinków.
+- Ostrzeżenia dla odcinków o niskiej pewności rozpoznania.
+- Proste okno GUI do wczytania JSON i eksportu wyników.
+- Testy jednostkowe oparte na standardowym `unittest`.
 
-- Automatyczne wykrywanie skali z opisu rysunku, tabelki projektowej albo wymiarów referencyjnych.
-- Tryb ręcznej kalibracji, w którym użytkownik wskazuje znany odcinek na PDF, jeśli skala nie zostanie rozpoznana automatycznie.
-- Walidacja skali przez porównanie kilku wymiarów z rysunku, aby wykryć błędnie zeskanowane lub przeskalowane PDF-y.
-- Osobna obsługa PDF-ów wektorowych i skanów rastrowych, ponieważ wymagają innych metod odczytu geometrii.
+## Uruchomienie przykładu
 
-### 2. Rozpoznawanie typów ścian
+Z katalogu repozytorium:
 
-- Biblioteka typów ścian, np. zdefiniowane oznaczenia, grubości, kreskowania, warstwy CAD i kolory.
-- Możliwość uczenia modelu na przykładach użytkownika: użytkownik oznacza kilka ścian danego typu, a system proponuje resztę.
-- Reguły priorytetu dla niejednoznacznych przypadków, np. gdy kolor, grubość i opis tekstowy wskazują różne typy.
-- Osobne wykrywanie ścian zewnętrznych na podstawie obrysu budynku, ciągłości konturu, grubości i relacji do pomieszczeń.
+```powershell
+python -m wall_pdf_analyzer.cli examples\sample_project.json out\raport.xlsx --overlay out\kontrola.svg
+python -m wall_pdf_analyzer.cli examples\sample_project.json out\raport.json
+python -m wall_pdf_analyzer.gui
+```
 
-### 3. Liczenie długości ścian z uwzględnieniem otworów
+Jeżeli używasz Pythona z pakietu Codex na tej maszynie:
 
-- Traktowanie okien i drzwi jako elementów leżących w ścianie, a nie jako końców ściany.
-- Łączenie współliniowych fragmentów ścian rozdzielonych otworami w jeden odcinek obliczeniowy.
-- Raportowanie długości brutto ściany, długości otworów oraz opcjonalnie długości netto, jeżeli użytkownik będzie tego potrzebował.
-- Oznaczanie miejsc, w których algorytm połączył odcinki przez okno lub drzwi, aby użytkownik mógł łatwo sprawdzić decyzję modelu.
+```powershell
+& 'C:\Users\dawid\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe' -m wall_pdf_analyzer.cli examples\sample_project.json out\raport.xlsx --overlay out\kontrola.svg
+```
 
-### 4. Kontrola jakości i tryb weryfikacji
+## Testy
 
-- Generowanie podglądu PDF z kolorową nakładką: każdy typ ściany w innym kolorze, ściana zewnętrzna osobno, a elementy nierozpoznane wyróżnione kolorem ostrzegawczym.
-- Wyświetlanie zakresu, który został przeliczony, np. przez obramowanie analizowanego obszaru albo listę stron i fragmentów PDF.
-- Dodanie poziomu pewności dla każdego odcinka ściany, np. wysoka, średnia lub niska pewność rozpoznania.
-- Panel korekty ręcznej, w którym użytkownik może zmienić typ ściany, połączyć odcinki, usunąć błędne rozpoznanie albo dodać brakujący fragment.
+```powershell
+python -m unittest discover -s tests
+python -m compileall wall_pdf_analyzer
+```
 
-### 5. Eksport do Excela
+## Format wejściowy
 
-- Arkusz zbiorczy z sumami długości według typu ściany.
-- Osobny arkusz dla ścian zewnętrznych budynku.
-- Kolumny: typ ściany, kolor oznaczenia, długość, jednostka, strona PDF, zakres analizy, poziom pewności i komentarz.
-- Linki albo identyfikatory pozycji prowadzące do oznaczeń na podglądzie PDF.
-- Możliwość eksportu także do CSV, PDF z adnotacjami oraz pliku JSON dla integracji z innymi systemami.
+Przykład znajduje się w [examples/sample_project.json](examples/sample_project.json).
 
-### 6. Obsługa wyjątków projektowych
+Najważniejsze pola:
 
-- Lista reguł specjalnych dla typów takich jak NNLK, aby aplikacja wiedziała, czy mają być kolorowane, pomijane, liczone osobno lub raportowane bez oznaczania.
-- Wykrywanie ścian łukowych, ukośnych, warstwowych i przerywanych.
-- Obsługa wielu kondygnacji, wielu stron PDF i różnych skal w jednym dokumencie.
-- Wykrywanie legendy rysunku i automatyczne mapowanie oznaczeń z legendy na typy ścian.
+- `scale.drawing_units_per_meter` określa, ile jednostek rysunku odpowiada jednemu metrowi.
+- `wall_types` definiuje kody, nazwy, kolory i reguły typów ścian.
+- `wall_segments` zawiera odcinki z punktami `start` i `end`, typem ściany, stroną PDF, pewnością rozpoznania i opcjonalnymi otworami.
+- `openings[].width` jest szerokością otworu w jednostkach rysunku.
+- `exterior: true` na typie lub odcinku oznacza ścianę zewnętrzną.
 
-### 7. Bezpieczeństwo i audyt obliczeń
+## Zakres prototypu
 
-- Historia zmian po korektach użytkownika.
-- Wersjonowanie wyników, aby można było porównać kolejne przeliczenia.
-- Raport audytowy pokazujący, jakie reguły zastosowano do każdego typu ściany.
-- Oznaczanie elementów wymagających ręcznego potwierdzenia przed finalnym eksportem.
+Ten prototyp nie rozpoznaje jeszcze automatycznie geometrii z surowego PDF. Jest przygotowany jako drugi etap procesu: przyjmuje dane, które mogą pochodzić z ekstraktora PDF, ręcznego oznaczenia albo przyszłego modelu rozpoznawania.
 
-## Proponowany przepływ pracy użytkownika
+Najbliższe kroki rozwoju:
 
-1. Użytkownik przesyła PDF.
-2. Aplikacja wykrywa skalę, strony i zakres analizy.
-3. Model rozpoznaje ściany, typy ścian, ściany zewnętrzne i otwory.
-4. System łączy odcinki ścian przerwane przez okna lub drzwi.
-5. Użytkownik otrzymuje podgląd z kolorową nakładką i listą pozycji do sprawdzenia.
-6. Użytkownik zatwierdza lub poprawia wyniki.
-7. Aplikacja generuje Excel oraz oznaczony plik kontrolny do pobrania.
+1. Dodać importer PDF, który rozróżnia PDF wektorowy i skan.
+2. Dodać ręczną kalibrację skali przez wskazanie znanego odcinka.
+3. Dodać edytor korekt: zmiana typu ściany, łączenie odcinków, usuwanie błędnych rozpoznań.
+4. Generować kontrolny PDF z nakładką zamiast samego SVG.
+5. Dodać historię zmian i wersjonowanie raportów.
+6. Dodać eksport reguł specjalnych dla typów takich jak `NNLK`.
