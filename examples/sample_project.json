@@ -1,0 +1,104 @@
+{
+  "project_name": "Przykladowy lokal - parter",
+  "scale": {
+    "label": "1:100",
+    "drawing_units_per_meter": 100
+  },
+  "scope": {
+    "description": "Zakres A - mieszkanie 01",
+    "pages": [1],
+    "area": {
+      "x": 0,
+      "y": 0,
+      "width": 900,
+      "height": 620
+    }
+  },
+  "wall_types": [
+    {
+      "code": "S1",
+      "name": "Sciana dzialowa 95 mm",
+      "color": "#2563EB"
+    },
+    {
+      "code": "S2",
+      "name": "Sciana instalacyjna 120 mm",
+      "color": "#16A34A"
+    },
+    {
+      "code": "NNLK",
+      "name": "Sciana nienosna lekka",
+      "color": "#F59E0B",
+      "rules": {
+        "review_required": true
+      }
+    },
+    {
+      "code": "EXT",
+      "name": "Sciana zewnetrzna",
+      "color": "#111827",
+      "exterior": true
+    }
+  ],
+  "wall_segments": [
+    {
+      "id": "W-001",
+      "type_code": "S1",
+      "start": {"x": 100, "y": 100},
+      "end": {"x": 430, "y": 100},
+      "page": 1,
+      "confidence": 0.92,
+      "comment": "Odcinek przez drzwi liczony brutto.",
+      "openings": [
+        {"kind": "door", "label": "D1", "width": 90, "offset": 180}
+      ]
+    },
+    {
+      "id": "W-002",
+      "type_code": "S1",
+      "start": {"x": 430, "y": 100},
+      "end": {"x": 430, "y": 360},
+      "page": 1,
+      "confidence": 0.88
+    },
+    {
+      "id": "W-003",
+      "type_code": "S2",
+      "start": {"x": 130, "y": 360},
+      "end": {"x": 430, "y": 360},
+      "page": 1,
+      "confidence": 0.81,
+      "openings": [
+        {"kind": "door", "label": "D2", "width": 80, "offset": 120}
+      ]
+    },
+    {
+      "id": "W-004",
+      "type_code": "NNLK",
+      "start": {"x": 130, "y": 180},
+      "end": {"x": 130, "y": 360},
+      "page": 1,
+      "confidence": 0.68,
+      "comment": "Wymaga sprawdzenia typu NNLK."
+    },
+    {
+      "id": "EXT-001",
+      "type_code": "EXT",
+      "start": {"x": 60, "y": 60},
+      "end": {"x": 520, "y": 60},
+      "page": 1,
+      "confidence": 0.95,
+      "openings": [
+        {"kind": "window", "label": "F1", "width": 140, "offset": 240}
+      ]
+    },
+    {
+      "id": "EXT-002",
+      "type_code": "EXT",
+      "start": {"x": 520, "y": 60},
+      "end": {"x": 520, "y": 410},
+      "page": 1,
+      "confidence": 0.95
+    }
+  ]
+}

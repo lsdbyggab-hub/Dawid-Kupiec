@@ -1,0 +1,16 @@
+[project]
+name = "wall-pdf-analyzer"
+version = "0.2.0"
+description = "Prototype for wall length analysis from PDF-derived geometry."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "openpyxl>=3.1",
+]
+
+[project.scripts]
+wall-analyzer = "wall_pdf_analyzer.cli:main"
+wall-analyzer-gui = "wall_pdf_analyzer.gui:main"
+
+[tool.setuptools.packages.find]
+include = ["wall_pdf_analyzer*"]
