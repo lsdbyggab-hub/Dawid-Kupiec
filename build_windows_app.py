@@ -24,6 +24,16 @@ def main() -> int:
             "Wall PDF Analyzer",
             "--add-data",
             f"{ROOT / 'examples'};examples",
+            "--hidden-import",
+            "pypdf",
+            "--hidden-import",
+            "pypdf.generic",
+            "--hidden-import",
+            "fitz",
+            "--hidden-import",
+            "PIL.Image",
+            "--hidden-import",
+            "PIL.ImageTk",
             str(ROOT / "run_app.py"),
         ]
     )

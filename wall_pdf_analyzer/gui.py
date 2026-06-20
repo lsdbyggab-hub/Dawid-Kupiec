@@ -5,12 +5,18 @@ import re
 import sys
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from wall_pdf_analyzer.analyzer import analyze_project
-from wall_pdf_analyzer.exporters import export_control_svg, export_result
+from wall_pdf_analyzer.editing import change_segment_type, delete_segments, merge_segments
+from wall_pdf_analyzer.exporters import export_control_pdf, export_control_svg, export_result
 from wall_pdf_analyzer.io import load_project
 from wall_pdf_analyzer.models import AnalysisInput, AnalysisResult
+from wall_pdf_analyzer.pdf_importer import (
+    DEFAULT_RASTER_DPI,
+    PdfScaleMissingError,
+    import_pdf_project,
+)
 
 APP_TITLE = "Wall PDF Analyzer"
 PROJECT_ROOT = (
@@ -66,30 +72,39 @@ class WallAnalyzerApp(tk.Tk):
         )
         ttk.Label(
             header,
-            text="Analiza długości ścian, otworów i ścian zewnętrznych",
+            text="Analiza dlugosci scian z JSON lub PDF wektorowego",
         ).grid(row=1, column=0, sticky="w", pady=(4, 0))
 
         toolbar = ttk.Frame(self, padding=(16, 0, 16, 10))
         toolbar.grid(row=1, column=0, sticky="ew")
-        toolbar.columnconfigure(8, weight=1)
+        toolbar.columnconfigure(6, weight=1)
 
         buttons = [
             ("Wczytaj JSON", self.choose_project),
-            ("Przykład", lambda: self.load_project(SAMPLE_PROJECT)),
+            ("Analizuj PDF", self.choose_pdf),
+            ("Przyklad", lambda: self.load_project(SAMPLE_PROJECT)),
+            ("Zmien typ", self.change_selected_type),
+            ("Scal", self.merge_selected),
+            ("Usun", self.delete_selected),
             ("Eksportuj wszystko", self.export_all),
             ("Excel", lambda: self.export_one(".xlsx")),
             ("CSV", lambda: self.export_one(".csv")),
             ("JSON", lambda: self.export_one(".json")),
             ("Overlay SVG", self.export_overlay),
-            ("Folder wyników", self.open_output_folder),
+            ("Overlay PDF", self.export_overlay_pdf),
+            ("Folder wynikow", self.open_output_folder),
         ]
         for column, (label, command) in enumerate(buttons):
+            row = column // 7
+            grid_column = column % 7
             ttk.Button(toolbar, text=label, command=command).grid(
-                row=0, column=column, padx=(0, 8)
+                row=row, column=grid_column, padx=(0, 8), pady=(0, 6)
             )
 
-        self.status = tk.StringVar(value="Wczytaj projekt albo użyj przykładu.")
-        ttk.Label(toolbar, textvariable=self.status).grid(row=0, column=8, sticky="e")
+        self.status = tk.StringVar(value="Wczytaj JSON albo analizuj PDF.")
+        ttk.Label(toolbar, textvariable=self.status).grid(
+            row=2, column=0, columnspan=7, sticky="ew"
+        )
 
         metrics = ttk.Frame(self, padding=(16, 0, 16, 12))
         metrics.grid(row=2, column=0, sticky="ew")
@@ -99,7 +114,7 @@ class WallAnalyzerApp(tk.Tk):
         self._metric(metrics, 0, "Projekt", "Brak")
         self._metric(metrics, 1, "Odcinki", "0")
         self._metric(metrics, 2, "Suma brutto", "0.00 m")
-        self._metric(metrics, 3, "Zewnętrzne", "0.00 m")
+        self._metric(metrics, 3, "Zewnetrzne", "0.00 m")
 
         notebook = ttk.Notebook(self)
         notebook.grid(row=3, column=0, sticky="nsew", padx=16, pady=(0, 16))
@@ -107,36 +122,14 @@ class WallAnalyzerApp(tk.Tk):
         preview = ttk.Frame(notebook, style="Panel.TFrame", padding=8)
         preview.rowconfigure(0, weight=1)
         preview.columnconfigure(0, weight=1)
-        self.preview_canvas = tk.Canvas(
-            preview,
-            bg="#FFFFFF",
-            highlightthickness=0,
-        )
+        self.preview_canvas = tk.Canvas(preview, bg="#FFFFFF", highlightthickness=0)
         self.preview_canvas.grid(row=0, column=0, sticky="nsew")
-        notebook.add(preview, text="Podgląd")
+        notebook.add(preview, text="Podglad")
 
         self.summary_table = self._make_table(
             notebook,
-            (
-                "type",
-                "name",
-                "color",
-                "count",
-                "gross",
-                "openings",
-                "net",
-                "exterior",
-            ),
-            (
-                "Typ",
-                "Nazwa",
-                "Kolor",
-                "Odcinki",
-                "Brutto [m]",
-                "Otwory [m]",
-                "Netto [m]",
-                "Zew.",
-            ),
+            ("type", "name", "color", "count", "gross", "openings", "net", "exterior"),
+            ("Typ", "Nazwa", "Kolor", "Odcinki", "Brutto [m]", "Otwory [m]", "Netto [m]", "Zew."),
         )
         notebook.add(self.summary_table.master, text="Podsumowanie")
 
@@ -148,8 +141,12 @@ class WallAnalyzerApp(tk.Tk):
                 "page",
                 "gross",
                 "openings",
+                "opening_count",
+                "opening_kinds",
                 "net",
                 "confidence",
+                "basis",
+                "edge",
                 "comment",
             ),
             (
@@ -158,11 +155,16 @@ class WallAnalyzerApp(tk.Tk):
                 "Strona",
                 "Brutto [m]",
                 "Otwory [m]",
+                "Liczba otw.",
+                "Typy otw.",
                 "Netto [m]",
-                "Pewność",
+                "Pewnosc",
+                "Podstawa",
+                "Os/krawedz",
                 "Komentarz",
             ),
         )
+        self.detail_table.configure(selectmode="extended")
         notebook.add(self.detail_table.master, text="Odcinki")
 
         warning_frame = ttk.Frame(notebook, style="Panel.TFrame", padding=8)
@@ -218,16 +220,130 @@ class WallAnalyzerApp(tk.Tk):
         if path:
             self.load_project(Path(path))
 
+    def choose_pdf(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Wybierz PDF do analizy",
+            initialdir=str(PROJECT_ROOT),
+            filetypes=(("PDF", "*.pdf"), ("Wszystkie pliki", "*.*")),
+        )
+        if path:
+            self.load_pdf(Path(path))
+
     def load_project(self, path: Path) -> None:
         try:
             self.project = load_project(path)
             self.result = analyze_project(self.project)
             self.project_path = path
         except Exception as exc:
-            messagebox.showerror("Nie można wczytać projektu", str(exc))
+            messagebox.showerror("Nie mozna wczytac projektu", str(exc))
             return
         self._refresh()
         self.status.set(f"Wczytano: {path.name}")
+
+    def load_pdf(self, path: Path) -> None:
+        try:
+            self.project = import_pdf_project(path)
+        except PdfScaleMissingError as exc:
+            calibration = CalibrationDialog(self, path, str(exc)).show()
+            if calibration is not None:
+                pixels, meters = calibration
+                try:
+                    self.project = import_pdf_project(
+                        path,
+                        calibration_pixels=pixels,
+                        calibration_meters=meters,
+                    )
+                except Exception as retry_exc:
+                    messagebox.showerror("Analiza PDF nieudana", str(retry_exc))
+                    return
+            else:
+                denominator = simpledialog.askfloat(
+                    "Skala PDF",
+                    f"{exc}\n\nPodaj mianownik skali, np. 100 dla 1:100.",
+                    minvalue=1.0,
+                )
+                if denominator is None:
+                    return
+                try:
+                    self.project = import_pdf_project(path, scale_denominator=denominator)
+                except Exception as retry_exc:
+                    messagebox.showerror("Analiza PDF nieudana", str(retry_exc))
+                    return
+        except Exception as exc:
+            messagebox.showerror("Analiza PDF nieudana", str(exc))
+            return
+        self.result = analyze_project(self.project)
+        self.project_path = path
+        self._refresh()
+        self.status.set(f"Przeanalizowano PDF: {path.name}")
+
+    def change_selected_type(self) -> None:
+        if self.project is None:
+            self._show_no_data()
+            return
+        segment_ids = self._selected_segment_ids()
+        if not segment_ids:
+            messagebox.showinfo("Brak wyboru", "Zaznacz jeden lub wiecej odcinkow.")
+            return
+        codes = ", ".join(sorted(self.project.wall_types))
+        type_code = simpledialog.askstring(
+            "Zmien typ sciany",
+            f"Dostepne typy: {codes}\nWpisz kod typu:",
+        )
+        if not type_code:
+            return
+        try:
+            self.project = change_segment_type(self.project, segment_ids, type_code.strip())
+        except Exception as exc:
+            messagebox.showerror("Korekta nieudana", str(exc))
+            return
+        self._reanalyze_after_edit("Zmieniono typ zaznaczonych odcinkow.")
+
+    def delete_selected(self) -> None:
+        if self.project is None:
+            self._show_no_data()
+            return
+        segment_ids = self._selected_segment_ids()
+        if not segment_ids:
+            messagebox.showinfo("Brak wyboru", "Zaznacz jeden lub wiecej odcinkow.")
+            return
+        if not messagebox.askyesno("Usun odcinki", f"Usunac odcinki: {', '.join(segment_ids)}?"):
+            return
+        try:
+            self.project = delete_segments(self.project, segment_ids)
+        except Exception as exc:
+            messagebox.showerror("Korekta nieudana", str(exc))
+            return
+        self._reanalyze_after_edit("Usunieto zaznaczone odcinki.")
+
+    def merge_selected(self) -> None:
+        if self.project is None:
+            self._show_no_data()
+            return
+        segment_ids = self._selected_segment_ids()
+        if len(segment_ids) < 2:
+            messagebox.showinfo("Za malo odcinkow", "Zaznacz co najmniej dwa odcinki do scalenia.")
+            return
+        try:
+            self.project = merge_segments(self.project, segment_ids)
+        except Exception as exc:
+            messagebox.showerror("Scalenie nieudane", str(exc))
+            return
+        self._reanalyze_after_edit("Scalono zaznaczone odcinki.")
+
+    def _reanalyze_after_edit(self, status: str) -> None:
+        assert self.project is not None
+        self.result = analyze_project(self.project)
+        self._refresh()
+        self.status.set(status)
+
+    def _selected_segment_ids(self) -> list[str]:
+        ids: list[str] = []
+        for item_id in self.detail_table.selection():
+            values = self.detail_table.item(item_id, "values")
+            if values:
+                ids.append(str(values[0]))
+        return ids
 
     def export_one(self, suffix: str) -> None:
         if self.result is None:
@@ -273,12 +389,34 @@ class WallAnalyzerApp(tk.Tk):
         self.status.set(f"Zapisano: {Path(path).name}")
         messagebox.showinfo("Gotowe", f"Zapisano overlay:\n{path}")
 
+    def export_overlay_pdf(self) -> None:
+        if self.project is None or self.result is None:
+            self._show_no_data()
+            return
+        path = filedialog.asksaveasfilename(
+            title="Zapisz kontrolny PDF",
+            initialdir=str(self.last_output_dir),
+            initialfile=f"{self._base_filename()}-kontrola.pdf",
+            defaultextension=".pdf",
+            filetypes=(("PDF", "*.pdf"),),
+        )
+        if not path:
+            return
+        try:
+            export_control_pdf(self.project, self.result, path)
+        except Exception as exc:
+            messagebox.showerror("Eksport PDF nieudany", str(exc))
+            return
+        self.last_output_dir = Path(path).parent
+        self.status.set(f"Zapisano: {Path(path).name}")
+        messagebox.showinfo("Gotowe", f"Zapisano kontrolny PDF:\n{path}")
+
     def export_all(self) -> None:
         if self.project is None or self.result is None:
             self._show_no_data()
             return
         directory = filedialog.askdirectory(
-            title="Wybierz folder wyników",
+            title="Wybierz folder wynikow",
             initialdir=str(self.last_output_dir),
         )
         if not directory:
@@ -290,12 +428,13 @@ class WallAnalyzerApp(tk.Tk):
             export_result(self.result, output_dir / f"{base_name}.csv")
             export_result(self.result, output_dir / f"{base_name}.json")
             export_control_svg(self.project, self.result, output_dir / f"{base_name}-kontrola.svg")
+            export_control_pdf(self.project, self.result, output_dir / f"{base_name}-kontrola.pdf")
         except Exception as exc:
             messagebox.showerror("Eksport nieudany", str(exc))
             return
         self.last_output_dir = output_dir
-        self.status.set(f"Zapisano komplet wyników w: {output_dir}")
-        messagebox.showinfo("Gotowe", f"Zapisano komplet wyników:\n{output_dir}")
+        self.status.set(f"Zapisano komplet wynikow w: {output_dir}")
+        messagebox.showinfo("Gotowe", f"Zapisano komplet wynikow:\n{output_dir}")
 
     def open_output_folder(self) -> None:
         self.last_output_dir.mkdir(parents=True, exist_ok=True)
@@ -320,7 +459,7 @@ class WallAnalyzerApp(tk.Tk):
             text=f"{len(self.result.rows)} / ostrz. {warning_count}"
         )
         self.metric_labels["Suma brutto"].configure(text=f"{total_gross:.2f} m")
-        self.metric_labels["Zewnętrzne"].configure(
+        self.metric_labels["Zewnetrzne"].configure(
             text=f"{self.result.exterior_total_m:.2f} m"
         )
 
@@ -339,6 +478,8 @@ class WallAnalyzerApp(tk.Tk):
                     row.segment_count,
                     f"{row.gross_length_m:.2f}",
                     f"{row.openings_m:.2f}",
+                    row.opening_count,
+                    row.opening_kinds,
                     f"{row.net_length_m:.2f}",
                     "tak" if row.exterior else "nie",
                 ),
@@ -355,18 +496,37 @@ class WallAnalyzerApp(tk.Tk):
                     f"{row.openings_m:.2f}",
                     f"{row.net_length_m:.2f}",
                     f"{row.confidence:.0%}",
+                    row.measurement_basis,
+                    row.centerline_or_face,
                     row.comment,
                 ),
             )
 
     def _refresh_warnings(self) -> None:
         assert self.result is not None
+        metadata = self.result.source_metadata
         self.warning_text.configure(state="normal")
         self.warning_text.delete("1.0", "end")
+        lines: list[str] = []
+        if metadata:
+            lines.extend(
+                [
+                    f"Typ PDF: {metadata.get('pdf_kind', 'brak danych')}",
+                    f"Metoda: {metadata.get('method', 'brak danych')}",
+                    f"Zrodlo skali: {metadata.get('scale_source', 'brak danych')}",
+                    "",
+                ]
+            )
         if self.result.warnings:
-            self.warning_text.insert("end", "\n".join(f"- {item}" for item in self.result.warnings))
+            lines.append("Ostrzezenia:")
+            lines.extend(f"- {item}" for item in self.result.warnings)
         else:
-            self.warning_text.insert("end", "Brak ostrzeżeń.")
+            lines.append("Brak ostrzezen.")
+        assumptions = metadata.get("assumptions", []) if metadata else []
+        if assumptions:
+            lines.extend(["", "Zalozenia:"])
+            lines.extend(f"- {item}" for item in assumptions)
+        self.warning_text.insert("end", "\n".join(lines))
         self.warning_text.configure(state="disabled")
 
     def _draw_preview(self) -> None:
@@ -378,7 +538,7 @@ class WallAnalyzerApp(tk.Tk):
                 20,
                 anchor="nw",
                 fill="#5D6D7E",
-                text="Brak danych do podglądu.",
+                text="Brak danych do podgladu.",
                 font=("Segoe UI", 12),
             )
             return
@@ -452,11 +612,127 @@ class WallAnalyzerApp(tk.Tk):
         if self.result is None:
             return "raport"
         name = self.result.project_name.lower()
-        name = re.sub(r"[^a-z0-9ąćęłńóśźż]+", "-", name, flags=re.IGNORECASE)
+        name = re.sub(r"[^a-z0-9]+", "-", name, flags=re.IGNORECASE)
         return name.strip("-") or "raport"
 
     def _show_no_data(self) -> None:
-        messagebox.showinfo("Brak danych", "Najpierw wczytaj projekt JSON.")
+        messagebox.showinfo("Brak danych", "Najpierw wczytaj JSON albo analizuj PDF.")
+
+
+class CalibrationDialog:
+    def __init__(self, parent: tk.Tk, pdf_path: Path, message: str) -> None:
+        self.parent = parent
+        self.pdf_path = pdf_path
+        self.message = message
+        self.value: tuple[float, float] | None = None
+        self.points: list[tuple[float, float]] = []
+        self.display_scale = 1.0
+        self.photo = None
+        self.canvas: tk.Canvas | None = None
+        self.length_var = tk.StringVar()
+        self.ok_button: ttk.Button | None = None
+
+    def show(self) -> tuple[float, float] | None:
+        try:
+            image, self.display_scale = self._render_preview()
+        except Exception as exc:
+            messagebox.showwarning(
+                "Kalibracja niedostepna",
+                f"Nie mozna pokazac podgladu kalibracji:\n{exc}",
+            )
+            return None
+
+        window = tk.Toplevel(self.parent)
+        window.title("Kalibracja znanym odcinkiem")
+        window.transient(self.parent)
+        window.grab_set()
+
+        ttk.Label(
+            window,
+            text=(
+                f"{self.message}\n"
+                "Kliknij dwa punkty znanego odcinka na pierwszej stronie PDF i wpisz jego dlugosc w metrach."
+            ),
+            padding=10,
+        ).grid(row=0, column=0, columnspan=3, sticky="ew")
+
+        self.canvas = tk.Canvas(window, width=image.width, height=image.height, bg="#FFFFFF")
+        self.canvas.grid(row=1, column=0, columnspan=3, padx=10, pady=(0, 8))
+        self.photo = self._photo_image(image)
+        self.canvas.create_image(0, 0, anchor="nw", image=self.photo)
+        self.canvas.bind("<Button-1>", self._on_click)
+
+        ttk.Label(window, text="Dlugosc [m]:").grid(row=2, column=0, padx=10, pady=8, sticky="e")
+        ttk.Entry(window, textvariable=self.length_var, width=12).grid(
+            row=2, column=1, pady=8, sticky="w"
+        )
+        self.ok_button = ttk.Button(window, text="OK", command=lambda: self._accept(window))
+        self.ok_button.grid(row=2, column=2, padx=10, pady=8, sticky="e")
+        ttk.Button(window, text="Pomin", command=window.destroy).grid(
+            row=3, column=2, padx=10, pady=(0, 10), sticky="e"
+        )
+        self._update_ok_state()
+        self.parent.wait_window(window)
+        return self.value
+
+    def _render_preview(self):
+        import fitz  # type: ignore
+        from PIL import Image
+
+        with fitz.open(str(self.pdf_path)) as document:
+            if len(document) == 0:
+                raise ValueError("PDF nie ma stron.")
+            page = document[0]
+            scale = DEFAULT_RASTER_DPI / 72.0
+            pixmap = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
+            image = Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
+        max_width, max_height = 920, 620
+        ratio = min(max_width / image.width, max_height / image.height, 1.0)
+        if ratio < 1.0:
+            image = image.resize((int(image.width * ratio), int(image.height * ratio)))
+        return image, ratio
+
+    def _photo_image(self, image):
+        from PIL import ImageTk
+
+        return ImageTk.PhotoImage(image)
+
+    def _on_click(self, event) -> None:
+        if self.canvas is None:
+            return
+        if len(self.points) >= 2:
+            self.points.clear()
+            self.canvas.delete("calibration")
+        point = (float(event.x), float(event.y))
+        self.points.append(point)
+        x, y = point
+        self.canvas.create_oval(x - 4, y - 4, x + 4, y + 4, fill="#DC2626", outline="", tags="calibration")
+        if len(self.points) == 2:
+            (x1, y1), (x2, y2) = self.points
+            self.canvas.create_line(x1, y1, x2, y2, fill="#DC2626", width=2, tags="calibration")
+        self._update_ok_state()
+
+    def _accept(self, window: tk.Toplevel) -> None:
+        if len(self.points) != 2:
+            return
+        try:
+            meters = float(self.length_var.get().replace(",", "."))
+        except ValueError:
+            messagebox.showerror("Bledna dlugosc", "Wpisz dlugosc odcinka w metrach.")
+            return
+        if meters <= 0:
+            messagebox.showerror("Bledna dlugosc", "Dlugosc musi byc wieksza od zera.")
+            return
+        (x1, y1), (x2, y2) = self.points
+        display_pixels = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+        original_pixels = display_pixels / max(self.display_scale, 0.0001)
+        self.value = (original_pixels, meters)
+        window.destroy()
+
+    def _update_ok_state(self) -> None:
+        if self.ok_button is not None:
+            state = "normal" if len(self.points) == 2 else "disabled"
+            self.ok_button.configure(state=state)
 
 
 def main() -> None:

@@ -10,7 +10,7 @@ LOW_CONFIDENCE_THRESHOLD = 0.75
 
 def analyze_project(project: AnalysisInput) -> AnalysisResult:
     rows: list[ReportRow] = []
-    warnings: list[str] = []
+    warnings: list[str] = list(project.source_metadata.get("warnings", []))
     scope_label = project.scope.label()
 
     for segment in project.wall_segments:
@@ -52,6 +52,10 @@ def analyze_project(project: AnalysisInput) -> AnalysisResult:
                 confidence=segment.confidence,
                 exterior=is_exterior,
                 scope=scope_label,
+                measurement_basis=segment.measurement_basis,
+                centerline_or_face=segment.centerline_or_face,
+                opening_count=len(segment.openings),
+                opening_kinds=", ".join(opening.kind for opening in segment.openings),
                 comment=segment.comment,
             )
         )
@@ -69,6 +73,7 @@ def analyze_project(project: AnalysisInput) -> AnalysisResult:
         summary=tuple(summary),
         exterior_total_m=exterior_total_m,
         warnings=tuple(warnings),
+        source_metadata=project.source_metadata,
     )
 
 
@@ -92,6 +97,17 @@ def _build_summary(rows: list[ReportRow]) -> list[SummaryRow]:
                 openings_m=round(sum(row.openings_m for row in group_rows), 3),
                 net_length_m=round(sum(row.net_length_m for row in group_rows), 3),
                 exterior=first.exterior,
+                opening_count=sum(row.opening_count for row in group_rows),
+                opening_kinds=", ".join(
+                    sorted(
+                        {
+                            kind.strip()
+                            for row in group_rows
+                            for kind in row.opening_kinds.split(",")
+                            if kind.strip()
+                        }
+                    )
+                ),
             )
         )
     return summary

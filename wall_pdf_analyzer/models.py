@@ -107,6 +107,8 @@ class WallSegment:
     confidence: float = 1.0
     exterior: bool = False
     comment: str = ""
+    measurement_basis: str = "manual_geometry"
+    centerline_or_face: str = "unclear"
     openings: tuple[Opening, ...] = ()
 
     @classmethod
@@ -120,6 +122,8 @@ class WallSegment:
             confidence=float(data.get("confidence", 1.0)),
             exterior=bool(data.get("exterior", False)),
             comment=str(data.get("comment", "")),
+            measurement_basis=str(data.get("measurement_basis", "manual_geometry")),
+            centerline_or_face=str(data.get("centerline_or_face", "unclear")),
             openings=tuple(Opening.from_mapping(item) for item in data.get("openings", [])),
         )
 
@@ -139,6 +143,7 @@ class AnalysisInput:
     scope: AnalysisScope
     wall_types: dict[str, WallType]
     wall_segments: tuple[WallSegment, ...]
+    source_metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_mapping(cls, data: dict[str, Any]) -> "AnalysisInput":
@@ -161,6 +166,7 @@ class AnalysisInput:
             scope=AnalysisScope.from_mapping(data.get("scope")),
             wall_types=wall_types,
             wall_segments=segments,
+            source_metadata=dict(data.get("source_metadata", {})),
         )
 
 
@@ -177,6 +183,10 @@ class ReportRow:
     confidence: float
     exterior: bool
     scope: str
+    measurement_basis: str = "manual_geometry"
+    centerline_or_face: str = "unclear"
+    opening_count: int = 0
+    opening_kinds: str = ""
     comment: str = ""
 
 
@@ -190,6 +200,8 @@ class SummaryRow:
     openings_m: float
     net_length_m: float
     exterior: bool
+    opening_count: int = 0
+    opening_kinds: str = ""
 
 
 @dataclass(frozen=True)
@@ -201,3 +213,4 @@ class AnalysisResult:
     summary: tuple[SummaryRow, ...]
     exterior_total_m: float
     warnings: tuple[str, ...] = ()
+    source_metadata: dict[str, Any] = field(default_factory=dict)
